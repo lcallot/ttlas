@@ -1,0 +1,279 @@
+\documentclass[11pt,oneside, a4paper]{amsart}
+\usepackage{natbib}
+
+\usepackage{amsbsy,amsmath}
+\usepackage{amssymb,amsfonts}
+\usepackage{bbm}%give 1 with dbl vertical bar 
+\usepackage{booktabs,url,enumerate}
+\usepackage{color,xcolor}
+\usepackage{float}
+\usepackage{tikz}
+\usepackage{rotating,graphicx,lscape}
+\usepackage{commath}
+\usepackage{multirow}
+\usetikzlibrary{arrows,positioning} 
+\usepackage[hypcap]{caption}
+\newcommand{\sgn}{\mathrm{sign}}
+\usepackage{setspace}
+
+
+
+\usepackage[top=1.5cm, bottom=1.5cm, left=3.0cm, right=3.0cm]{geometry}
+
+\DeclareMathOperator{\Cov}{\mathbb{C}ov}
+\DeclareMathOperator{\Var}{\mathbb{V}ar}
+\DeclareMathOperator{\E}{\mathbb{E}}
+\DeclareMathOperator{\nid}{NID}
+\DeclareMathOperator{\N}{\mathcal{N}}
+\DeclareMathOperator{\corr}{corr}
+\DeclareMathOperator{\diag}{diag}
+\onehalfspace
+
+\newtheorem{theorem}{Theorem}
+\begin{document}
+	
+\title{Thresholded Lasso: empirical application.}   
+\author{Callot, Caner, Kock, and Riquelme.}
+\date{\today}
+\maketitle
+
+
+This document is generated from a \texttt{knitr} file which contains all the code necessary to replicate the plots and tables in the application. To replicate these results, simply compile the file with the \texttt{knitr} package for \texttt{R}.
+
+
+
+<<lib,eval=TRUE,echo=FALSE,cache=FALSE,results='hide', message=FALSE>>=
+# Loading the libraries
+library('xtable')
+library('glmnet')
+library('ggplot2')
+library('reshape2')
+# Sourcing the threshold Lasso code.
+source('../code/tlas.R')
+source('../code/cat_apptab.R')
+
+@
+
+
+\section{Data}
+
+We use the data made available by \cite{BIS}\footnote{The original data is available at \url{http://www.bis.org/publ/work352.htm}, and can also be found in the replication material for this section.}, which originates mainly from the IMF and OECD data bases. The data contains measures of the debt-to-GDP ratio for:
+\begin{enumerate}
+\item Government debt,
+\item Corporate debt,
+\item Private debt (corporate + household),
+\item Total (non financial institutions) debt (private + government).
+\end{enumerate}
+The data of \cite{BIS} also contains a measure of household debt that we drop as the series is incomplete. 
+A set of control variables, composed of standard macroeconomic indicators, is also included in the data.
+\begin{enumerate}
+	\item GDP: The logarithm of the \textit{per capita} GDP. 
+	\item Savings: Gross savings to GDP ratio.
+	\item $\Delta$Pop: Population growth.
+	\item School: Years spent in secondary education.
+	\item Open: Openness to trade, exports plus imports over GDP.
+	\item $\Delta$CPI: Inflation.
+	\item Dep: Population dependency ratio.
+	\item LL: Ratio of liquid liabilities to GDP.
+	\item Crisis: An indicator for banking crisis in the subsequent 5 years, from \cite{RR}. 
+\end{enumerate}
+
+The data is observed for 18 countries\footnote{US, Japan, Germany, the United Kingdom, France, Italy, Canada, Australia, Austria, Belgium, Denmark, Finland, Greece, the Netherlands, Norway, Portugal, Spain, and Sweden.} from 1980 to 2009 at an annual frequency, the details on the construction of each variables can be found in \cite{BIS}.
+
+
+<<data,echo=TRUE,results='highlight',cache=TRUE,echo=FALSE>>=
+# Loading the data
+# Data set from Stephen G Cecchetti, M S Mohanty and Fabrizio Zampolli
+# BIS Working Papers No 352
+load('../data//BIS_data.Rda')
+
+# taking log gdp
+BIS[,,'rgdpchLev'] <- log(BIS[,,'rgdpchLev'])
+
+# pop growth
+BIS[-1,,'pop'] <- 100*(BIS[-1,,'pop']-BIS[-dim(BIS)[1],,'pop'])/BIS[-dim(BIS)[1],,'pop']
+BIS[1,,'pop'] <- NA
+
+# Averaging of future growth
+gtmp <- NA*BIS[,,2] 
+for(y in 1:(nrow(gtmp)-5)){gtmp[y,] <- colMeans(BIS[y+c(1:5),,2])}
+BIS[,,2] <- gtmp
+
+# Averaging of future crisis
+ctmp <- NA*BIS[,,10]
+for(y in 1:(nrow(ctmp)-5)){ctmp[y,] <- colMeans(BIS[y+c(1:5),,10])}
+BIS[,,10] <- ctmp
+
+# Averaging of future pop growth
+ptmp <- NA*BIS[,,4]
+for(y in 1:(nrow(ptmp)-5)){ptmp[y,] <- colMeans(BIS[y+c(1:5),,4])}
+BIS[,,4] <- ptmp
+
+# Estimation setup
+thdint <- TRUE # Should we include a threshold intrercept
+BIC <- TRUE # Lambda selection by BIC
+C <- seq(0.1,5,0.1)
+
+# New variable names
+dimnames(BIS)[[3]] <- c('GDP','growth','Savings','$\\Delta$Pop','School','Open','$\\Delta$CPI','Dep','LL','Crisis','Total','Government','Private','Corporate','Household')
+
+@
+
+
+\section{Results}
+
+
+
+<<paneldata,dependson='data',cache=TRUE,echo=FALSE>>=
+
+# Stacking	
+pBIS <- acast(melt(BIS), Year + Country ~ Variable)
+pAGR <- pBIS[,2]
+
+# Constructing the countryfixed effects
+cfe <- kronecker(rep(1,30),diag(18))
+cfe[,1] <- rep(0,18*30)
+cfe_n <- paste('FE',dimnames(BIS)[2][[1]],sep='_')
+@
+
+
+<<panel_gvt,dependson='paneldata',cache=TRUE,echo=FALSE>>=
+# Full controls plus government debt. 
+xthdind <- c(1,3,4,5,6,7,8,9,10,12)
+thdind <- 12
+
+# Lists of models
+y_lst <- list(c(1981:2004),c(1981:2004),c(1990:2004),c(1984,1989,1994,1999,2004))
+c_lst <- list(NULL,cfe,cfe,cfe)
+
+#para names (without FEs)
+pn <- c('intercept',dimnames(BIS)[3][[1]][xthdind],
+		 'THD intercept',paste('THD',dimnames(BIS)[3][[1]][xthdind],sep=' '))
+
+# Some more storage
+tmin <- lmbd <- alpt <- alptt <- Cest <- c()
+pcf <- pse <- c()
+
+for(m in 1:length(y_lst)){
+	# Selecting years rows
+	yind <- c()
+	yl <- y_lst[[m]]
+	for(y in yl) yind <- c(yind,grep(y,rownames(pBIS)))
+
+	pBIS <- pBIS[yind,]
+	pAGR <- pAGR[yind]
+	if(!is.null(c_lst[[m]]))FE <- c_lst[[m]][yind,]
+	else FE <- NULL
+
+	# Selecting the variables
+	thdvar  <- pBIS[,thdind]  
+	xthd  <-   pBIS[,xthdind]  
+	ctrlvar <- FE
+
+	# Grid for the threshold parameter
+	taugrid <- quantile(thdvar,probs = seq(0.2,0.9,by=0.1))
+	
+	# Estimation
+	esty <- ttlas( y = pAGR , xthd = xthd ,  x = FE , thdvar = thdvar, C = C,
+				   taugrid = taugrid , BIC = TRUE, intercept = TRUE, standardize = FALSE, thd_intercept = TRUE )
+	# Storing
+	gmin <- which.min(esty$Vobj)
+	tmin <- c(tmin,esty$taugrid[gmin])
+	lmbd <- c(lmbd,esty$lambda[gmin])
+	Cest <- c(Cest,esty$Cmin[gmin])
+	
+	# Parameter storage
+	npar <- 1:(2*(ncol(xthd)+1))
+	alpt <- cbind(alpt,esty$alptau[npar,gmin],esty$alpthd[npar,gmin])
+	alptt <- cbind(alptt,esty$alpthd[npar,gmin])
+	pcf <- cbind(pcf,esty$pcoef[npar,gmin])
+	pse <- cbind(pse,esty$pstdE[npar,gmin])
+
+}
+rownames(alpt) <- rownames(alptt) <- rownames(pcf) <- rownames(pse) <- pn
+@
+
+
+<<xtab-panel1,dependson='panel_gvt',cache=TRUE,results='asis', echo=FALSE>>=
+ndebt <- rep('Government',4)
+
+smpl_line <- '& Sample & \\multicolumn{2}{c}{1981 - 2004} & \\multicolumn{2}{c}{1981 - 2004} & \\multicolumn{2}{c}{1990 - 2004} & \\multicolumn{2}{c}{No overlap}  '
+
+fe_line <- '& FE & \\multicolumn{2}{c}{$\\times$} & \\multicolumn{2}{c}{\\checkmark} & \\multicolumn{2}{c}{\\checkmark} & \\multicolumn{2}{c}{\\checkmark}  '
+
+prttab(alpt, ndebt = ndebt, tmin = tmin, lmbd = lmbd , year = 'XXXX',Cest = Cest, label = 'tab:panelGvt',diag_dbt=FALSE,fe_line = fe_line, smpl_line = smpl_line)
+@
+
+
+
+<<panel_dbt,dependson='paneldata',cache=TRUE,echo=FALSE>>=
+# Lists of models
+yl <- c(1981:2004)
+
+#para names (without FEs)
+pn <- c('intercept',dimnames(BIS)[3][[1]][xthdind],
+		 'THD intercept',paste('THD',dimnames(BIS)[3][[1]][xthdind],sep=' '))
+
+# Some more storage
+tmin <- lmbd <- alpt <- alptt <- Cest <- c()
+pcf <- pse <- c()
+
+for(thdind in c(14,13,11)){
+	
+	# Full controls plus debt. 
+	xthdind <- c(1,3,4,5,6,7,8,9,10,thdind)
+
+	# Selecting years rows
+	yind <- c()
+	for(y in yl) yind <- c(yind,grep(y,rownames(pBIS)))
+
+	pBIS <- pBIS[yind,]
+	pAGR <- pAGR[yind]
+	FE <- cfe[yind,]
+	
+	# Selecting the variables
+	thdvar  <- pBIS[,thdind]  
+	xthd  <-   pBIS[,xthdind]  
+	ctrlvar <- FE
+
+	# Grid for the threshold parameter
+	taugrid <- quantile(thdvar,probs = seq(0.2,0.9,by=0.1))
+	
+	# Estimation
+	esty <- ttlas( y = pAGR , xthd = xthd ,  x = FE , thdvar = thdvar, C = C,
+				   taugrid = taugrid , BIC = TRUE, intercept = TRUE, standardize = FALSE, thd_intercept = TRUE )
+	# Storing
+	gmin <- which.min(esty$Vobj)
+	tmin <- c(tmin,esty$taugrid[gmin])
+	lmbd <- c(lmbd,esty$lambda[gmin])
+	Cest <- c(Cest,esty$Cmin[gmin])
+	
+	# Parameter storage
+	#npar <- 2*(ncol(xthd))+1
+	npar <- 1:(2*(ncol(xthd)+1))
+	alpt <- cbind(alpt,esty$alptau[npar,gmin],esty$alpthd[npar,gmin])
+	alptt <- cbind(alptt,esty$alpthd[npar,gmin])
+	pcf <- cbind(pcf,esty$pcoef[npar,gmin])
+	pse <- cbind(pse,esty$pstdE[npar,gmin])
+
+}
+rownames(alpt) <- rownames(alptt) <- rownames(pcf) <- rownames(pse) <- pn
+@
+
+
+<<xtab-panel2,dependson='panel_gvt',cache=TRUE,results='asis', echo=FALSE>>=
+ndebt <- c('Corporate','Private','Total')
+
+smpl_line <- '& Sample & \\multicolumn{2}{c}{1981 - 2004} & \\multicolumn{2}{c}{1981 - 2004} & \\multicolumn{2}{c}{1981 - 2004}  '
+
+fe_line <- '& FE & \\multicolumn{2}{c}{\\checkmark} & \\multicolumn{2}{c}{\\checkmark} & \\multicolumn{2}{c}{\\checkmark}  '
+
+prttab(alpt, ndebt = ndebt, tmin = tmin, lmbd = lmbd , year = 'XXXX',Cest = Cest, label = 'tab:panelDbt',diag_dbt=TRUE, fe_line=fe_line, smpl_line = smpl_line)
+@
+
+
+
+\bibliographystyle{chicagoa}
+\bibliography{bibliography}
+
+\end{document}
