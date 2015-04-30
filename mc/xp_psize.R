@@ -16,5 +16,5 @@ mmc <- melt(mca)
 tmc <- acast(mmc,par+tau+nobs+Estimator~stats)
 
 
-save(tmc,file = 'mc_code/save/xp_psize5')
+save(tmc,file = 'mc/save/xp_psize5')
 

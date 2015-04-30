@@ -105,9 +105,9 @@ This document contains 5 tables:
 \clearpage
 \newpage
 
-\subsection*{Increasing number of zeros.}
+\subsection*{Quasi replication of Lee Seo Shin table 3.}
 
-<<xpseo,results='asis',echo=FALSE>>=
+<<xpzero,results='asis',echo=FALSE>>=
 tab_caption <- 'Lasso (white background) and Thresholded Lasso (grey background). Increasing number of zero parameters and 3 locations of $\\tau_0$.'
 
 
@@ -130,6 +130,8 @@ catmc_2col(tmc,rfreq = c(6,2,1),clabs = clabs , statlabs = statlabs ,
 
 @
 
+
+In table \ref{tab:xpzero} we replicate the DGP of Lee, Seo, and Shin. Replicating their exact numbers is impossible because of the different ways of selecting $\lambda$. %Aslo some of their numbers are strange. 
 
 \begin{itemize}
 	\item Sample size: $n=200$.
@@ -162,6 +164,9 @@ catmc_2col(tmc,rfreq = c(2,2,1),clabs = clabs , statlabs = statlabs ,
 		   label = 'xpnj',
 		   cdrop=3,tab_caption = tab_caption,col_hide = col_hide)
 @
+
+
+In this experiment we use the same settings as previously with the exception that there are no jumps
 
 \begin{itemize}
 	\item Sample size: $n=200$.
@@ -196,6 +201,7 @@ catmc_2col(tmc,rfreq = c(10,2,1),clabs = clabs , statlabs = statlabs ,
 @
 
 
+In this experiment we use one of the models of table \ref{tab:xpzero} with varying sample size:
 
 \begin{itemize}
 	\item Sample size: $n=50,100,200,500,1000$.
@@ -236,6 +242,8 @@ catmc_2col(tmc,rfreq = c(6,2,1),clabs = clabs , statlabs = statlabs ,
 @
 
 
+In this experiment we use one of the models of table \ref{tab:xpzero} with varying scaling of the parameters:
+
 \begin{itemize}
 	\item Sample size: $n=100,200$.
 	\item $\beta = a[1,1,1,1,1,0,...,0]$
@@ -271,6 +279,8 @@ catmc_2col(tmc,rfreq = c(6,2,1),clabs = clabs , statlabs = statlabs ,
 @
 
 
+In this experiment we use one of the models of table \ref{tab:xpseo} with varying scaling of the parameters:
+
 \begin{itemize}
 	\item Sample size: $n=200$.
 	\item $\beta = [2,...,2,0,...,0]$
@@ -284,5 +294,47 @@ catmc_2col(tmc,rfreq = c(6,2,1),clabs = clabs , statlabs = statlabs ,
 \end{itemize}
 
 
+
+\subsection*{$Q\subset X$ and varying corrlations.}
+
+<<xpcorr,results='asis',echo=FALSE>>=
+tab_caption <- 'Lasso (white background) and Thresholded Lasso (grey background). X Q and 2 locations of $\\tau_0$.'
+
+
+statlabs <- c('MSE','{\\small $ |J(\\hat \\alpha) \\cap J(\\alpha_0)^c|$}','{\\small $|J(\\alpha_0) \\cap J(\\hat\\alpha)^c|$}'
+			  ,'Perfect Sel','\\# non Zeros',
+			  '$\\enVert{\\hat\\alpha - \\alpha_0}_1$',
+			  '$\\enVert{\\hat\\alpha - \\alpha_0}_{\\infty}$',
+			  '$\\enVert{\\hat\\tau - \\tau_0}_1$',
+			  'C',
+			  '$\\hat\\lambda$')
+
+clabs <- c('','$\\tau_0$','')
+
+
+load('save/xp_corr')
+col_hide <- c(3,8)
+
+catmc_2col(tmc,rfreq = c(4,2,1),clabs = clabs , statlabs = statlabs ,
+		   rlab1=c('$Q=X_1$',paste0('$\\rho_{Q,X_1}$=',c(0,0.5,0.95))),
+		   rlab2=c(0.3,0.5),label = 'xpcorr',
+		   cdrop=3,tab_caption = tab_caption,col_hide = col_hide)
+
+
+@
+
+
+In table \ref{tab:xpcorr} we...
+
+\begin{itemize}
+	\item Sample size: $n=200$.
+	\item $\beta = [2,2,2,2,2,0,...,0]$
+	\item $\delta = [2,-2,2,-2,2,0,...,0]$
+	\item The length $\beta$ and $\delta$ is $m=50$ so that each model has $2m+1$ parameters.
+	\item The intercept is set to 0. 
+	\item The results are based on 1000 replications. 	
+	\item $\sigma^2=0.25$.
+	\item We experiment with $\tau=0.3,0.5$.
+\end{itemize}
 
 \end{document}

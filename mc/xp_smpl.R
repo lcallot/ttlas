@@ -15,4 +15,4 @@ mmc <- melt(mca)
 tmc <- acast(mmc,par+tau+nobs+Estimator~stats)
 
 
-save(tmc,file = 'mc_code/save/xp_smpl')
+save(tmc,file = 'mc/save/xp_smpl')

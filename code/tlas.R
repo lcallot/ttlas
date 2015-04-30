@@ -2,7 +2,7 @@
 
 # Simulation function for the threshdolded Lasso
 
-mc_ttlas <- function( lpar,lpar2=NULL,vobs,vtau, taugrid , Cgrid , iter,ncores=1,sig_eps=1)
+mc_ttlas <- function( lpar,lpar2=NULL,vobs,vtau, taugrid , Cgrid , iter,ncores=1,sig_eps=1,corrXQ=0)
 {	
 	
 	tt <- proc.time()
@@ -28,7 +28,8 @@ mc_ttlas <- function( lpar,lpar2=NULL,vobs,vtau, taugrid , Cgrid , iter,ncores=1
 				rt <- proc.time()
 				#mctlas <- lapply(1:iter,ittlas, par1,par2,nobs,tau,y=y,xthd=xthd
 				mctlas <- mclapply(1:iter,ittlas, par1,par2,nobs,tau,y=y,xthd=xthd
-								   ,x=NULL,thdvar=thdvar,taugrid=taugrid,Cgrid=Cgrid,sig_eps=sig_eps
+								   ,x=NULL,taugrid=taugrid,Cgrid=Cgrid
+								   ,sig_eps=sig_eps,corrXQ=corrXQ
 									#)
 									,mc.cores=ncores)
 				
@@ -117,15 +118,58 @@ mcstat <- function(mctlas,vpar,tau)
 }
 
 
+# Constructs a variable such that corr(x,y) ~= r
+# shamelessly copied from SO
+# returns a data frame of two variables which correlate with a population correlation of rho
+# If desired, one of both variables can be fixed to an existing variable by specifying x
+getBiCop <- function(n, rho, mar.fun=rnorm, x = NULL, ...) {
+	if (!is.null(x)) {X1 <- x} else {X1 <- mar.fun(n, ...)}
+	if (!is.null(x) & length(x) != n) warning("Variable x does not have the same length as n!")
+	
+	C <- matrix(rho, nrow = 2, ncol = 2)
+	diag(C) <- 1
+	
+	C <- chol(C)
+	
+	X2 <- mar.fun(n)
+	X <- cbind(X1,X2)
+	
+	# induce correlation (does not change X1)
+	df <- X %*% C
+	
+	## if desired: check results
+	#all.equal(X1,X[,1])
+	#cor(X)
+	
+	return(df)
+}
+
+
 # generates the data
 # calls the ttlas function
 # called by the mc_ttlas function
-ittlas <- function(i, par1,par2,nobs,tau , y , xthd , x=NULL , thdvar , taugrid , Cgrid , sig_eps)
+ittlas <- function(i, par1,par2,nobs,tau , y , xthd , x=NULL , taugrid , Cgrid , sig_eps, corrXQ = 0)
 {
 	nvars <- length(par1) # nbr vars (incl. cste)
 	
-	thdvar <- matrix(rnorm(nobs),ncol=1) # generate the threshold variable
+	#covariates
 	X1 <- matrix(rnorm(nobs*(nvars-1)),ncol=nvars-1) # generating the regessors
+	
+	#threshold variable
+	if(corrXQ==0) {
+		thdvar <- matrix(rnorm(nobs),ncol=1) # uncorr threshold variable
+	}
+	else {
+		if(corrXQ >1) {
+			thdvar <- X1[,1]# threshold variable is X1
+		}
+		else {
+			thdvar <- getBiCop(n = nobs, rho = corrXQ, x = X1[,1])[,2]
+			#thdvar <- correlatedValue(X1[,1],corrXQ) #correlated variables
+		}
+	}
+	
+	# Threshold covariates
 	X2 <- X1
 	X2[thdvar>tau,] <- 0 # threshold regressors
 	
